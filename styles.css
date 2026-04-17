@@ -2,28 +2,42 @@
   position: relative;
 }
 
+.gcg-chat-row.gcg-row-inline-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.gcg-chat-row.gcg-row-inline-actions > * {
+  min-width: 0;
+}
+
 .gcg-chat-row-hidden {
   display: none !important;
 }
 
 .gcg-action-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
   pointer-events: none;
 }
 
 .gcg-action-slot[data-slot-mode="inline"] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-inline-end: 4px;
+  margin-inline-end: 2px;
   pointer-events: none;
 }
 
-.gcg-action-slot[data-slot-mode="overlay"] {
-  position: absolute;
-  top: 50%;
-  inset-inline-end: 8px;
-  transform: translateY(-50%);
-  z-index: 2;
+.gcg-row-endcap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: 2px;
+  min-width: fit-content;
 }
 
 .gcg-trash-button {
@@ -41,6 +55,14 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.gcg-chat-row.gcg-row-inline-actions > a[href],
+.gcg-chat-row.gcg-row-inline-actions > [role="link"],
+.gcg-chat-row.gcg-row-inline-actions > div:first-child,
+.gcg-chat-row.gcg-row-inline-actions > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .gcg-chat-row:hover .gcg-trash-button,

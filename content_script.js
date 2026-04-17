@@ -9,7 +9,10 @@
     rowClass: "gcg-chat-row",
     hiddenClass: "gcg-chat-row-hidden",
     actionSlotClass: "gcg-action-slot",
+    endcapClass: "gcg-row-endcap",
     buttonClass: "gcg-trash-button",
+    rowReadyClass: "gcg-row-ready",
+    rowInlineActionsClass: "gcg-row-inline-actions",
     initializedAttr: "gcgInitialized",
     titleAttr: "gcgTitle",
     chatIdAttr: "gcgChatId",
@@ -77,7 +80,9 @@
       "button[type='submit']",
       "[role='button']"
     ],
-    busyTimeoutMs: 4500
+    busyTimeoutMs: 4500,
+    startupScanWindowMs: 5000,
+    startupScanIntervalMs: 250
   };
 
   const state = {
@@ -88,7 +93,9 @@
     rootObserver: null,
     rowObserver: null,
     pendingScan: false,
-    pendingRenameRequests: new Map()
+    pendingRenameRequests: new Map(),
+    startupScanTimerId: null,
+    startupScanStartedAt: 0
   };
 
   function debugLog(...args) {
@@ -115,6 +122,10 @@
 
   function nextAnimationFrame() {
     return new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+
+  function nextMicrotask() {
+    return Promise.resolve();
   }
 
   function wait(ms) {
@@ -214,7 +225,8 @@
     state.rowObserver.observe(root, {
       childList: true,
       subtree: true,
-      characterData: true
+      characterData: true,
+      attributes: true
     });
   }
 
@@ -417,6 +429,26 @@
     });
   }
 
+  function beginStartupScans() {
+    if (state.startupScanTimerId) {
+      window.clearInterval(state.startupScanTimerId);
+    }
+
+    state.startupScanStartedAt = performance.now();
+    scheduleSidebarScan();
+    window.setTimeout(scheduleSidebarScan, 0);
+    window.setTimeout(scheduleSidebarScan, 60);
+
+    state.startupScanTimerId = window.setInterval(() => {
+      scheduleSidebarScan();
+
+      if (performance.now() - state.startupScanStartedAt >= CONFIG.startupScanWindowMs) {
+        window.clearInterval(state.startupScanTimerId);
+        state.startupScanTimerId = null;
+      }
+    }, CONFIG.startupScanIntervalMs);
+  }
+
   function initializeOrRefreshRow(row) {
     if (!(row instanceof HTMLElement)) {
       return;
@@ -440,6 +472,7 @@
     }
 
     applyGhosting(row);
+    row.classList.add(CONFIG.rowReadyClass);
   }
 
   function injectTrashButton(row) {
@@ -466,16 +499,43 @@
     const slot = document.createElement("span");
     slot.className = CONFIG.actionSlotClass;
 
-    const menuButton = findRowMenuButton(row);
-    if (menuButton && menuButton.parentElement && menuButton.parentElement !== row) {
+    const endcap = ensureRowEndcap(row);
+    if (endcap) {
       slot.dataset.slotMode = "inline";
-      menuButton.parentElement.insertBefore(slot, menuButton);
+      endcap.insertBefore(slot, endcap.firstChild);
+      row.classList.add(CONFIG.rowInlineActionsClass);
       return slot;
     }
 
-    slot.dataset.slotMode = "overlay";
+    slot.dataset.slotMode = "inline";
     row.appendChild(slot);
+    row.classList.add(CONFIG.rowInlineActionsClass);
     return slot;
+  }
+
+  function ensureRowEndcap(row) {
+    const existing = row.querySelector(`.${CONFIG.endcapClass}`);
+    if (existing) {
+      return existing;
+    }
+
+    const menuButton = findRowMenuButton(row);
+    if (!menuButton || !menuButton.parentElement) {
+      return null;
+    }
+
+    const menuParent = menuButton.parentElement;
+    const endcap = document.createElement("span");
+    endcap.className = CONFIG.endcapClass;
+
+    if (menuParent.childElementCount === 1) {
+      menuParent.classList.add(CONFIG.endcapClass);
+      return menuParent;
+    }
+
+    menuParent.insertBefore(endcap, menuButton);
+    endcap.appendChild(menuButton);
+    return endcap;
   }
 
   function trashIconSvg() {
@@ -525,6 +585,11 @@
   }
 
   function extractRowTitle(row) {
+    const anchorTitle = extractAnchorTitle(row);
+    if (anchorTitle) {
+      return anchorTitle;
+    }
+
     const titleElement = findLikelyTitleElement(row);
     if (titleElement) {
       return normalizeText(titleElement.textContent);
@@ -558,6 +623,33 @@
     return fragments[0] || "";
   }
 
+  function extractAnchorTitle(row) {
+    const anchor = row.matches("a[href]") ? row : row.querySelector("a[href]");
+    if (!anchor) {
+      return "";
+    }
+
+    const leafCandidates = Array.from(anchor.querySelectorAll("span, div, p"))
+      .filter((element) => {
+        if (!(element instanceof HTMLElement)) {
+          return false;
+        }
+        if (element.closest(`.${CONFIG.actionSlotClass}, .${CONFIG.buttonClass}`)) {
+          return false;
+        }
+        return element.childElementCount === 0 && Boolean(normalizeText(element.textContent));
+      })
+      .sort((left, right) => normalizeText(right.textContent).length - normalizeText(left.textContent).length);
+
+    if (leafCandidates.length) {
+      return normalizeText(leafCandidates[0].textContent);
+    }
+
+    const clone = anchor.cloneNode(true);
+    clone.querySelectorAll("button, [role='button'], svg, img").forEach((node) => node.remove());
+    return normalizeText(clone.textContent);
+  }
+
   function findLikelyTitleElement(row) {
     const candidates = Array.from(row.querySelectorAll("span, div, p"))
       .filter((element) => {
@@ -588,7 +680,8 @@
       return;
     }
 
-    const title = row.dataset[CONFIG.titleAttr] || extractRowTitle(row);
+    const title = extractRowTitle(row) || row.dataset[CONFIG.titleAttr] || "";
+    row.dataset[CONFIG.titleAttr] = title;
     const shouldHide = state.hideDeletedChats && isDeletedTitle(title);
     row.classList.toggle(CONFIG.hiddenClass, shouldHide);
   }
@@ -761,7 +854,19 @@
   }
 
   function findRowMenuButton(row) {
-    return row.querySelector(CONFIG.menuButtonSelectors.join(","));
+    const buttons = Array.from(row.querySelectorAll(CONFIG.menuButtonSelectors.join(",")));
+    return (
+      buttons.find((button) => {
+        const label = normalizedLowercase(
+          button.getAttribute("aria-label") ||
+          button.getAttribute("aria-labelledby") ||
+          button.textContent
+        );
+        return label.includes("more") || label.includes("option") || label.includes("menu");
+      }) ||
+      buttons[buttons.length - 1] ||
+      null
+    );
   }
 
   async function renameViaDomFallback(row) {
@@ -922,8 +1027,11 @@
 
     whenBodyReady(() => {
       startObservers();
-      scheduleSidebarScan();
+      beginStartupScans();
     });
+
+    await nextMicrotask();
+    scheduleSidebarScan();
   }
 
   initialize().catch((error) => {
