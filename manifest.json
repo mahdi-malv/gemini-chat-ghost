@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini Chat Ghost",
+  "version": "0.1.0",
+  "description": "Injects a one-click trash action into the Gemini sidebar and hides chats renamed to deleted.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*"
+  ],
+  "action": {
+    "default_title": "Gemini Chat Ghost",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "content_script.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page_bridge.js"
+      ],
+      "matches": [
+        "https://gemini.google.com/*"
+      ]
+    }
+  ]
+}

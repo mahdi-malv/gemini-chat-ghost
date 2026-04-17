@@ -1,0 +1,80 @@
+.gcg-chat-row {
+  position: relative;
+}
+
+.gcg-chat-row-hidden {
+  display: none !important;
+}
+
+.gcg-action-slot {
+  pointer-events: none;
+}
+
+.gcg-action-slot[data-slot-mode="inline"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-end: 4px;
+  pointer-events: none;
+}
+
+.gcg-action-slot[data-slot-mode="overlay"] {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 8px;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.gcg-trash-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.gcg-chat-row:hover .gcg-trash-button,
+.gcg-chat-row:focus-within .gcg-trash-button,
+.gcg-trash-button:focus-visible {
+  opacity: 0.88;
+  pointer-events: auto;
+}
+
+.gcg-trash-button:hover {
+  background: rgba(95, 99, 104, 0.12);
+}
+
+.gcg-trash-button:focus-visible {
+  outline: 2px solid rgba(26, 115, 232, 0.28);
+  outline-offset: 1px;
+}
+
+.gcg-trash-button[data-busy="true"] {
+  opacity: 0.95;
+}
+
+.gcg-trash-button[data-failed="true"] {
+  color: #d93025;
+  opacity: 0.95;
+}
+
+.gcg-trash-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
