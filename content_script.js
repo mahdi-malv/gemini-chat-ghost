@@ -4,7 +4,7 @@
   const CONFIG = {
     debug: false,
     storageKey: "hideDeletedChats",
-    deletedTitle: "deleted",
+    deletedPrefix: "[x] ",
     bridgeScriptId: "gcg-page-bridge",
     rowClass: "gcg-chat-row",
     hiddenClass: "gcg-chat-row-hidden",
@@ -90,7 +90,7 @@
   }
 
   function isDeletedTitle(value) {
-    return normalizedLowercase(value) === CONFIG.deletedTitle;
+    return normalizeText(value).startsWith(CONFIG.deletedPrefix);
   }
 
   function unique(items) {
@@ -588,11 +588,14 @@
     const row = document.querySelector(`.${CONFIG.rowClass}[data-gcg-chat-id="${chatId}"]`);
     if (!row) return;
 
-    row.dataset[CONFIG.titleAttr] = CONFIG.deletedTitle;
+    const currentTitle = row.dataset[CONFIG.titleAttr] || extractRowTitle(row) || "";
+    const newTitle = isDeletedTitle(currentTitle) ? currentTitle : CONFIG.deletedPrefix + currentTitle;
+
+    row.dataset[CONFIG.titleAttr] = newTitle;
 
     const titleElement = findLikelyTitleElement(row);
     if (titleElement && titleElement.childElementCount === 0) {
-      titleElement.textContent = CONFIG.deletedTitle;
+      titleElement.textContent = newTitle;
     }
 
     applyGhosting(row);
@@ -684,7 +687,10 @@
     button.disabled = true;
 
     try {
-      const result = await requestRenameThroughBridge(chatId, CONFIG.deletedTitle);
+      const row = document.querySelector(`.${CONFIG.rowClass}[data-gcg-chat-id="${chatId}"]`);
+      const currentTitle = (row && row.dataset[CONFIG.titleAttr]) || (row && extractRowTitle(row)) || "";
+      const newTitle = isDeletedTitle(currentTitle) ? currentTitle : CONFIG.deletedPrefix + currentTitle;
+      const result = await requestRenameThroughBridge(chatId, newTitle);
 
       if (result.ok) {
         setOptimisticDeletedStateForCurrentChat();
