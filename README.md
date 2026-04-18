@@ -2,7 +2,7 @@
 
 For a workspace account in Gemini, chats are considered company documents and either will not be saved at all or can't be deleted individually.
 
-This Chrome extension for `gemini.google.com` that adds a one-click delete action by renaming chats to `deleted`, with an optional setting to hide those chats from the sidebar.
+This Chrome extension for `gemini.google.com` adds a one-click delete action by prefixing chat titles with `[x] ` (e.g. `[x] My Chat`), with an optional setting to hide those chats from the sidebar.
 
 ## Install
 
