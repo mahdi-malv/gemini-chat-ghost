@@ -609,13 +609,22 @@
     return candidate || "";
   }
 
-  function findShareButton() {
-    return (
-      document.querySelector("button[data-test-id='share-button']") ||
-      document.querySelector("button[aria-label='Share conversation']") ||
-      document.querySelector("button[aria-label*='share' i]") ||
-      null
-    );
+  function findTopBarAnchor() {
+    // Preferred: insert before the share button
+    const shareBtn = document.querySelector("button[data-test-id='share-button']") ||
+      document.querySelector("button[aria-label='Share conversation']");
+    if (shareBtn && shareBtn.parentElement) {
+      return { container: shareBtn.parentElement, before: shareBtn };
+    }
+
+    // Fallback: insert before the conversation-actions menu button (the ⋮ button)
+    const actionsBtn = document.querySelector("button[data-test-id='conversation-actions-menu-icon-button']") ||
+      document.querySelector("conversation-actions-icon button");
+    if (actionsBtn && actionsBtn.closest(".buttons-container")) {
+      return { container: actionsBtn.closest(".buttons-container"), before: actionsBtn };
+    }
+
+    return null;
   }
 
   function ensureTopBarButton() {
@@ -631,8 +640,8 @@
       return;
     }
 
-    const shareBtn = findShareButton();
-    if (!shareBtn || !shareBtn.parentElement) {
+    const anchor = findTopBarAnchor();
+    if (!anchor) {
       return;
     }
 
@@ -649,7 +658,8 @@
       handleTopBarTrashClick(button).catch((err) => debugLog("topbar rename failed", err));
     });
 
-    shareBtn.parentElement.insertBefore(button, shareBtn);
+    const insertParent = anchor.before.parentElement || anchor.container;
+    insertParent.insertBefore(button, anchor.before);
     debugLog("top bar trash button injected for chat", chatId);
   }
 

@@ -12,8 +12,9 @@
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: inherit;
+  color: #444746;
   cursor: pointer;
+  flex-shrink: 0;
   transition: background-color 160ms ease, color 160ms ease;
 }
 
