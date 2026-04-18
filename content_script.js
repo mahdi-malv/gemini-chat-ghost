@@ -8,11 +8,8 @@
     bridgeScriptId: "gcg-page-bridge",
     rowClass: "gcg-chat-row",
     hiddenClass: "gcg-chat-row-hidden",
-    actionSlotClass: "gcg-action-slot",
-    endcapClass: "gcg-row-endcap",
     buttonClass: "gcg-trash-button",
     rowReadyClass: "gcg-row-ready",
-    rowInlineActionsClass: "gcg-row-inline-actions",
     initializedAttr: "gcgInitialized",
     titleAttr: "gcgTitle",
     chatIdAttr: "gcgChatId",
@@ -191,13 +188,15 @@
     }
 
     state.rootObserver = new MutationObserver(() => {
-      refreshSidebarRoot();
-      scheduleSidebarScan();
+      if (!state.sidebarRoot || !document.contains(state.sidebarRoot)) {
+        refreshSidebarRoot();
+        scheduleSidebarScan();
+      }
     });
 
-    state.rootObserver.observe(document.documentElement, {
+    state.rootObserver.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: false
     });
 
     refreshSidebarRoot();
@@ -226,7 +225,7 @@
       childList: true,
       subtree: true,
       characterData: true,
-      attributes: true
+      attributeFilter: ["aria-label", "href", "title"]
     });
   }
 
@@ -480,62 +479,18 @@
       return;
     }
 
-    const slot = ensureActionSlot(row);
+    const menuButton = findRowMenuButton(row);
+    if (!menuButton || !menuButton.parentElement) {
+      return;
+    }
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = CONFIG.buttonClass;
     button.setAttribute("aria-label", "Rename chat to deleted");
     button.setAttribute("title", "Rename chat to deleted");
     button.innerHTML = trashIconSvg();
-    slot.appendChild(button);
-  }
-
-  function ensureActionSlot(row) {
-    const existing = row.querySelector(`:scope > .${CONFIG.actionSlotClass}, .${CONFIG.actionSlotClass}`);
-    if (existing) {
-      return existing;
-    }
-
-    const slot = document.createElement("span");
-    slot.className = CONFIG.actionSlotClass;
-
-    const endcap = ensureRowEndcap(row);
-    if (endcap) {
-      slot.dataset.slotMode = "inline";
-      endcap.insertBefore(slot, endcap.firstChild);
-      row.classList.add(CONFIG.rowInlineActionsClass);
-      return slot;
-    }
-
-    slot.dataset.slotMode = "inline";
-    row.appendChild(slot);
-    row.classList.add(CONFIG.rowInlineActionsClass);
-    return slot;
-  }
-
-  function ensureRowEndcap(row) {
-    const existing = row.querySelector(`.${CONFIG.endcapClass}`);
-    if (existing) {
-      return existing;
-    }
-
-    const menuButton = findRowMenuButton(row);
-    if (!menuButton || !menuButton.parentElement) {
-      return null;
-    }
-
-    const menuParent = menuButton.parentElement;
-    const endcap = document.createElement("span");
-    endcap.className = CONFIG.endcapClass;
-
-    if (menuParent.childElementCount === 1) {
-      menuParent.classList.add(CONFIG.endcapClass);
-      return menuParent;
-    }
-
-    menuParent.insertBefore(endcap, menuButton);
-    endcap.appendChild(menuButton);
-    return endcap;
+    menuButton.parentElement.insertBefore(button, menuButton.nextSibling);
   }
 
   function trashIconSvg() {
@@ -602,7 +557,7 @@
           return NodeFilter.FILTER_REJECT;
         }
 
-        if (node.parentElement.closest(`.${CONFIG.buttonClass}, .${CONFIG.actionSlotClass}`)) {
+        if (node.parentElement.closest(`.${CONFIG.buttonClass}`)) {
           return NodeFilter.FILTER_REJECT;
         }
 
@@ -634,7 +589,7 @@
         if (!(element instanceof HTMLElement)) {
           return false;
         }
-        if (element.closest(`.${CONFIG.actionSlotClass}, .${CONFIG.buttonClass}`)) {
+        if (element.closest(`.${CONFIG.buttonClass}`)) {
           return false;
         }
         return element.childElementCount === 0 && Boolean(normalizeText(element.textContent));
@@ -656,7 +611,7 @@
         if (!(element instanceof HTMLElement)) {
           return false;
         }
-        if (element.closest(`.${CONFIG.buttonClass}, .${CONFIG.actionSlotClass}`)) {
+        if (element.closest(`.${CONFIG.buttonClass}`)) {
           return false;
         }
         if (element.closest("button, [role='button']")) {
