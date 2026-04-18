@@ -13,6 +13,7 @@
     initializedAttr: "gcgInitialized",
     titleAttr: "gcgTitle",
     chatIdAttr: "gcgChatId",
+    topBarButtonId: "gcg-topbar-trash-button",
     messageSource: "GCG_CONTENT_SCRIPT",
     pageSource: "GCG_PAGE_BRIDGE",
     messageTypes: {
@@ -22,7 +23,6 @@
       renameRecipeSeen: "GCG_RENAME_RECIPE_SEEN"
     },
     rowExcludeSelector: [
-      ".gcg-trash-button",
       "[aria-hidden='true']",
       "template",
       "script",
@@ -56,27 +56,6 @@
       "button[aria-label*='menu' i]",
       "[role='button'][aria-haspopup='menu']"
     ],
-    menuSurfaceSelectors: [
-      "[role='menu']",
-      "[data-test-id*='menu' i]",
-      "[data-testid*='menu' i]",
-      ".cdk-overlay-pane [role='menu']"
-    ],
-    renameInputSelectors: [
-      "[role='dialog'] input[type='text']",
-      "[role='dialog'] textarea",
-      "form input[type='text']",
-      "form textarea",
-      "input[aria-label*='title' i]",
-      "input[aria-label*='rename' i]",
-      "textarea[aria-label*='title' i]"
-    ],
-    confirmButtonSelectors: [
-      "[role='dialog'] button",
-      "form button",
-      "button[type='submit']",
-      "[role='button']"
-    ],
     busyTimeoutMs: 4500,
     startupScanWindowMs: 5000,
     startupScanIntervalMs: 250
@@ -89,6 +68,7 @@
     sidebarRoot: null,
     rootObserver: null,
     rowObserver: null,
+    topBarObserver: null,
     pendingScan: false,
     pendingRenameRequests: new Map(),
     startupScanTimerId: null,
@@ -182,6 +162,8 @@
     state.bridgeInjected = true;
   }
 
+  // ── Sidebar (for ghosting/hiding deleted rows) ──────────────────────────────
+
   function startObservers() {
     if (state.rootObserver) {
       state.rootObserver.disconnect();
@@ -201,6 +183,7 @@
 
     refreshSidebarRoot();
     scheduleSidebarScan();
+    startTopBarObserver();
   }
 
   function stopRowObserver() {
@@ -465,43 +448,10 @@
       row.dataset[CONFIG.titleAttr] = title;
     }
 
-    if (!row.dataset[CONFIG.initializedAttr]) {
-      injectTrashButton(row);
-      row.dataset[CONFIG.initializedAttr] = "true";
-    }
+    row.dataset[CONFIG.initializedAttr] = "true";
 
     applyGhosting(row);
     row.classList.add(CONFIG.rowReadyClass);
-  }
-
-  function injectTrashButton(row) {
-    if (row.querySelector(`.${CONFIG.buttonClass}`)) {
-      return;
-    }
-
-    const menuButton = findRowMenuButton(row);
-    if (!menuButton || !menuButton.parentElement) {
-      return;
-    }
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = CONFIG.buttonClass;
-    button.setAttribute("aria-label", "Rename chat to deleted");
-    button.setAttribute("title", "Rename chat to deleted");
-    button.innerHTML = trashIconSvg();
-    menuButton.parentElement.insertBefore(button, menuButton.nextSibling);
-  }
-
-  function trashIconSvg() {
-    return [
-      "<svg viewBox='0 0 24 24' aria-hidden='true' focusable='false'>",
-      "<path d='M9 3h6l1 2h4v2H4V5h4l1-2z'></path>",
-      "<path d='M7 7h10l-.8 11.2A2 2 0 0 1 14.2 20H9.8a2 2 0 0 1-2-1.8L7 7z'></path>",
-      "<path d='M10 11v5'></path>",
-      "<path d='M14 11v5'></path>",
-      "</svg>"
-    ].join("");
   }
 
   function extractChatIdFromRow(row) {
@@ -557,10 +507,6 @@
           return NodeFilter.FILTER_REJECT;
         }
 
-        if (node.parentElement.closest(`.${CONFIG.buttonClass}`)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-
         if (node.parentElement.closest("button, [role='button'], svg")) {
           return NodeFilter.FILTER_REJECT;
         }
@@ -589,9 +535,6 @@
         if (!(element instanceof HTMLElement)) {
           return false;
         }
-        if (element.closest(`.${CONFIG.buttonClass}`)) {
-          return false;
-        }
         return element.childElementCount === 0 && Boolean(normalizeText(element.textContent));
       })
       .sort((left, right) => normalizeText(right.textContent).length - normalizeText(left.textContent).length);
@@ -609,9 +552,6 @@
     const candidates = Array.from(row.querySelectorAll("span, div, p"))
       .filter((element) => {
         if (!(element instanceof HTMLElement)) {
-          return false;
-        }
-        if (element.closest(`.${CONFIG.buttonClass}`)) {
           return false;
         }
         if (element.closest("button, [role='button']")) {
@@ -641,10 +581,12 @@
     row.classList.toggle(CONFIG.hiddenClass, shouldHide);
   }
 
-  function setOptimisticDeletedState(row) {
-    if (!(row instanceof HTMLElement)) {
-      return;
-    }
+  function setOptimisticDeletedStateForCurrentChat() {
+    const chatId = extractCurrentChatId();
+    if (!chatId) return;
+
+    const row = document.querySelector(`.${CONFIG.rowClass}[data-gcg-chat-id="${chatId}"]`);
+    if (!row) return;
 
     row.dataset[CONFIG.titleAttr] = CONFIG.deletedTitle;
 
@@ -655,6 +597,150 @@
 
     applyGhosting(row);
   }
+
+  // ── Top-bar trash button ────────────────────────────────────────────────────
+
+  function extractCurrentChatId() {
+    const path = window.location.pathname;
+    const segments = path.split("/").filter(Boolean);
+    const candidate = [...segments].reverse().find(
+      (s) => s.length > 6 && !["app", "chat", "conversation"].includes(s.toLowerCase())
+    );
+    return candidate || "";
+  }
+
+  function findShareButton() {
+    return (
+      document.querySelector("button[data-test-id='share-button']") ||
+      document.querySelector("button[aria-label='Share conversation']") ||
+      document.querySelector("button[aria-label*='share' i]") ||
+      null
+    );
+  }
+
+  function ensureTopBarButton() {
+    const chatId = extractCurrentChatId();
+
+    if (!chatId) {
+      removeTopBarButton();
+      return;
+    }
+
+    // Already injected and still in the DOM
+    if (document.getElementById(CONFIG.topBarButtonId)) {
+      return;
+    }
+
+    const shareBtn = findShareButton();
+    if (!shareBtn || !shareBtn.parentElement) {
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.id = CONFIG.topBarButtonId;
+    button.className = CONFIG.buttonClass;
+    button.setAttribute("aria-label", "Mark chat as deleted");
+    button.setAttribute("title", "Mark chat as deleted");
+    button.innerHTML = trashIconSvg();
+
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleTopBarTrashClick(button).catch((err) => debugLog("topbar rename failed", err));
+    });
+
+    shareBtn.parentElement.insertBefore(button, shareBtn);
+    debugLog("top bar trash button injected for chat", chatId);
+  }
+
+  function removeTopBarButton() {
+    const existing = document.getElementById(CONFIG.topBarButtonId);
+    if (existing) {
+      existing.remove();
+    }
+  }
+
+  async function handleTopBarTrashClick(button) {
+    if (button.dataset.busy === "true") {
+      return;
+    }
+
+    const chatId = extractCurrentChatId();
+    if (!chatId) {
+      return;
+    }
+
+    button.dataset.busy = "true";
+    button.disabled = true;
+
+    try {
+      const result = await requestRenameThroughBridge(chatId, CONFIG.deletedTitle);
+
+      if (result.ok) {
+        setOptimisticDeletedStateForCurrentChat();
+        scheduleSidebarScan();
+      } else {
+        button.dataset.failed = "true";
+        window.setTimeout(() => {
+          delete button.dataset.failed;
+        }, 1600);
+      }
+    } finally {
+      button.disabled = false;
+      delete button.dataset.busy;
+    }
+  }
+
+  function startTopBarObserver() {
+    if (state.topBarObserver) {
+      state.topBarObserver.disconnect();
+    }
+
+    // Watch for top-bar appearing/changing (SPA navigation changes the DOM)
+    state.topBarObserver = new MutationObserver(() => {
+      scheduleTopBarCheck();
+    });
+
+    state.topBarObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    scheduleTopBarCheck();
+
+    let lastUrl = location.href;
+    window.addEventListener("popstate", () => { removeTopBarButton(); scheduleTopBarCheck(); });
+    window.setInterval(() => {
+      if (location.href !== lastUrl) {
+        lastUrl = location.href;
+        removeTopBarButton();
+        scheduleTopBarCheck();
+      }
+    }, 200);
+  }
+
+  let topBarCheckPending = false;
+  function scheduleTopBarCheck() {
+    if (topBarCheckPending) return;
+    topBarCheckPending = true;
+    requestAnimationFrame(() => {
+      topBarCheckPending = false;
+      ensureTopBarButton();
+    });
+  }
+
+  function trashIconSvg() {
+    return [
+      "<svg viewBox='0 0 24 24' aria-hidden='true' focusable='false'>",
+      "<path d='M9 3h6l1 2h4v2H4V5h4l1-2z'></path>",
+      "<path d='M7 7h10l-.8 11.2A2 2 0 0 1 14.2 20H9.8a2 2 0 0 1-2-1.8L7 7z'></path>",
+      "<path d='M10 11v5'></path>",
+      "<path d='M14 11v5'></path>",
+      "</svg>"
+    ].join("");
+  }
+
+  // ── Message handling ────────────────────────────────────────────────────────
 
   function bindMessageListeners() {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -718,69 +804,7 @@
     });
   }
 
-  function bindClickDelegation() {
-    document.addEventListener("click", (event) => {
-      const button = event.target instanceof Element ? event.target.closest(`.${CONFIG.buttonClass}`) : null;
-      if (!button) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const row = button.closest(`.${CONFIG.rowClass}`);
-      if (!row) {
-        return;
-      }
-
-      handleTrashClick(row, button).catch((error) => {
-        debugLog("rename action failed", error);
-      });
-    }, true);
-  }
-
-  async function handleTrashClick(row, button) {
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
-
-    if (button.dataset.busy === "true") {
-      return;
-    }
-
-    button.dataset.busy = "true";
-    button.disabled = true;
-
-    try {
-      const chatId = row.dataset[CONFIG.chatIdAttr] || extractChatIdFromRow(row);
-      if (chatId) {
-        row.dataset[CONFIG.chatIdAttr] = chatId;
-      }
-
-      let result = { ok: false, error: "No rename strategy succeeded." };
-
-      if (chatId) {
-        result = await requestRenameThroughBridge(chatId, CONFIG.deletedTitle);
-      }
-
-      if (!result.ok) {
-        result = await renameViaDomFallback(row);
-      }
-
-      if (result.ok) {
-        setOptimisticDeletedState(row);
-        scheduleSidebarScan();
-      } else {
-        button.dataset.failed = "true";
-        window.setTimeout(() => {
-          delete button.dataset.failed;
-        }, 1600);
-      }
-    } finally {
-      button.disabled = false;
-      delete button.dataset.busy;
-    }
-  }
+  // ── Rename strategies ───────────────────────────────────────────────────────
 
   function requestRenameThroughBridge(chatId, title) {
     const requestId =
@@ -806,142 +830,6 @@
         title
       }, window.location.origin);
     });
-  }
-
-  function findRowMenuButton(row) {
-    const buttons = Array.from(row.querySelectorAll(CONFIG.menuButtonSelectors.join(",")));
-    return (
-      buttons.find((button) => {
-        const label = normalizedLowercase(
-          button.getAttribute("aria-label") ||
-          button.getAttribute("aria-labelledby") ||
-          button.textContent
-        );
-        return label.includes("more") || label.includes("option") || label.includes("menu");
-      }) ||
-      buttons[buttons.length - 1] ||
-      null
-    );
-  }
-
-  async function renameViaDomFallback(row) {
-    const menuButton = findRowMenuButton(row);
-    if (!menuButton) {
-      return { ok: false, method: "dom-fallback", error: "No menu button found for row." };
-    }
-
-    menuButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-
-    const menu = await waitForElement(() => findOpenMenu());
-    if (!menu) {
-      return { ok: false, method: "dom-fallback", error: "Rename menu did not open." };
-    }
-
-    const renameItem = findRenameMenuItem(menu);
-    if (!renameItem) {
-      return { ok: false, method: "dom-fallback", error: "Rename menu item not found." };
-    }
-
-    renameItem.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-
-    const input = await waitForElement(() => findRenameInput());
-    if (!input) {
-      return { ok: false, method: "dom-fallback", error: "Rename input not found." };
-    }
-
-    fillInput(input, CONFIG.deletedTitle);
-    await nextAnimationFrame();
-
-    const submitted = submitRename(input);
-    if (!submitted) {
-      return { ok: false, method: "dom-fallback", error: "Rename form could not be submitted." };
-    }
-
-    await waitForRenameCompletion(row);
-    return { ok: true, method: "dom-fallback" };
-  }
-
-  function findOpenMenu() {
-    for (const selector of CONFIG.menuSurfaceSelectors) {
-      const menu = document.querySelector(selector);
-      if (menu) {
-        return menu;
-      }
-    }
-    return null;
-  }
-
-  function findRenameMenuItem(menu) {
-    const menuItems = Array.from(
-      menu.querySelectorAll("button, [role='menuitem'], [role='button'], li")
-    );
-
-    return (
-      menuItems.find((item) => normalizedLowercase(item.textContent).includes("rename")) || null
-    );
-  }
-
-  function findRenameInput() {
-    for (const selector of CONFIG.renameInputSelectors) {
-      const input = document.querySelector(selector);
-      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
-        return input;
-      }
-    }
-
-    const active = document.activeElement;
-    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
-      return active;
-    }
-
-    return null;
-  }
-
-  function fillInput(input, value) {
-    const prototype =
-      input instanceof HTMLTextAreaElement
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-    if (descriptor && descriptor.set) {
-      descriptor.set.call(input, value);
-    } else {
-      input.value = value;
-    }
-
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  function submitRename(input) {
-    const dialog = input.closest("[role='dialog'], form") || document;
-    const buttons = Array.from(dialog.querySelectorAll(CONFIG.confirmButtonSelectors.join(",")));
-    const confirmButton = buttons.find((button) => {
-      const text = normalizedLowercase(button.textContent);
-      return text.includes("save") || text.includes("rename") || text.includes("done") || text.includes("ok");
-    });
-
-    if (confirmButton) {
-      confirmButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-      return true;
-    }
-
-    input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter" }));
-    input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, cancelable: true, key: "Enter", code: "Enter" }));
-    return true;
-  }
-
-  async function waitForRenameCompletion(row) {
-    const start = performance.now();
-    while (performance.now() - start < CONFIG.busyTimeoutMs) {
-      const title = extractRowTitle(row);
-      if (isDeletedTitle(title)) {
-        return true;
-      }
-      await wait(100);
-    }
-    return false;
   }
 
   function waitForElement(factory, timeoutMs = CONFIG.busyTimeoutMs) {
@@ -973,11 +861,12 @@
     });
   }
 
+  // ── Init ────────────────────────────────────────────────────────────────────
+
   async function initialize() {
     state.hideDeletedChats = Boolean(await readStorage(CONFIG.storageKey, true));
 
     bindMessageListeners();
-    bindClickDelegation();
     injectPageBridge();
 
     whenBodyReady(() => {

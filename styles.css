@@ -6,24 +6,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: none;
-  border-radius: 999px;
+  border-radius: 50%;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 160ms ease, background-color 160ms ease, color 160ms ease;
-}
-
-.gcg-chat-row:hover .gcg-trash-button,
-.gcg-chat-row:focus-within .gcg-trash-button,
-.gcg-trash-button:focus-visible {
-  opacity: 0.88;
-  pointer-events: auto;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 .gcg-trash-button:hover {
@@ -36,17 +27,17 @@
 }
 
 .gcg-trash-button[data-busy="true"] {
-  opacity: 0.95;
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .gcg-trash-button[data-failed="true"] {
   color: #d93025;
-  opacity: 0.95;
 }
 
 .gcg-trash-button svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.65;
